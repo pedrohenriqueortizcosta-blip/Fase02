@@ -1,0 +1,44 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# AWS credentials
+.aws/
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Go
+*.exe
+*.out
+
+# Docker
+.docker/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Kubernetes secrets (never commit real secrets)
+k8s/**/*secret*.yaml
+k8s/**/*Secret*.yaml

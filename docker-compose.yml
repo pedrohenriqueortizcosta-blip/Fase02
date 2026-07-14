@@ -1,0 +1,159 @@
+services:
+  #_____________________________DATABASES____________________________
+  postgres-auth:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_AUTH_DATABASE}
+      POSTGRES_USER: ${DB_AUTH_USER}
+      POSTGRES_PASSWORD: ${DB_AUTH_PASSWORD}
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+      - ./auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${DB_AUTH_USER} -d ${DB_AUTH_DATABASE}"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  postgres-flagservice:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_FLAG_DATABASE}
+      POSTGRES_USER: ${DB_FLAG_USER}
+      POSTGRES_PASSWORD: ${DB_FLAG_PASSWORD}      
+    volumes:
+      - postgres-flag-data:/var/lib/postgresql/data
+      - ./flag-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${DB_FLAG_USER} -d ${DB_FLAG_DATABASE}"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  postgres-targetservice:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_TARGET_DATABASE}
+      POSTGRES_USER: ${DB_TARGET_USER}
+      POSTGRES_PASSWORD: ${DB_TARGET_PASSWORD}      
+    volumes:
+      - postgres-target-data:/var/lib/postgresql/data
+      - ./targeting-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${DB_TARGET_USER} -d ${DB_TARGET_DATABASE}"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+  
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: 
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  #_____________________________MICROSERVICOS____________________________
+  auth-service:
+    build: ./auth-service
+    restart: unless-stopped
+    ports: 
+      - "${PORTAUTH}:8001"
+    environment:
+      DATABASE_URL: ${DATABASE_AUTH_URL}
+      MASTER_KEY: ${MASTER_KEY}
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+    
+  flag-service:
+    build: ./flag-service
+    restart: unless-stopped
+    ports: 
+      - "${PORTFLAG}:8002"
+    environment:
+      DATABASE_URL: ${DATABASE_FLAG_URL}
+      AUTH_SERVICE_URL: http://auth-service:8001                                                                                                                              
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      postgres-flagservice:
+        condition: service_healthy
+
+  targeting-service:
+    build: ./targeting-service
+    restart: unless-stopped
+    ports:
+      - "${PORTTARGET}:8003"
+    environment:
+      DATABASE_URL: ${DATABASE_TARGET_URL}
+      AUTH_SERVICE_URL: http://auth-service:8001 
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      postgres-targetservice:
+        condition: service_healthy
+
+  evaluation-service:                               
+      build: ./evaluation-service
+      restart: unless-stopped
+      ports:
+        - "${PORTEVALUATION}:8004"
+      environment:
+        REDIS_URL: redis://redis:6379
+        FLAG_SERVICE_URL: http://flag-service:8002
+        TARGETING_SERVICE_URL: http://targeting-service:8003
+        SERVICE_API_KEY: ${SERVICE_API_KEY}
+        AWS_PROFILE: Pedro-Costa
+        AWS_SQS_URL: ${AWS_SQS_URL}
+        AWS_REGION: ${AWS_REGION}
+      volumes:
+        - ~/.aws:/home/appuser/.aws:ro
+      depends_on:
+        redis:
+          condition: service_healthy
+        flag-service:
+          condition: service_healthy
+        targeting-service:
+          condition: service_healthy
+  
+  analytics-service:
+    build: ./analytics-service
+    restart: unless-stopped
+    ports:
+      - "${PORTANALYTICS}:8005"
+    command: ["gunicorn", "--bind", "0.0.0.0:8005", "--timeout", "0", "app:app"]
+    environment:
+      AWS_PROFILE: ${AWS_PROFILE}
+      AWS_REGION: ${AWS_REGION}
+      AWS_SQS_URL: ${AWS_SQS_URL}
+      AWS_DYNAMODB_TABLE: ${AWS_DYNAMODB_TABLE}
+    volumes:
+      - ~/.aws:/home/appuser/.aws
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+volumes:
+  postgres-auth-data:
+  postgres-flag-data:
+  postgres-target-data:
+  redis-data:   

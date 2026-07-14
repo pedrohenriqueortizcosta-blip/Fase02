@@ -1,0 +1,26 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: togglemaster
+  region: us-east-1
+  version: "1.31"
+  tags:
+    project: togglemaster
+
+vpc:
+  nat:
+    gateway: Single  # 1 NAT gateway instead of 3 (saves ~$65/month)
+
+managedNodeGroups:
+  - name: general
+    instanceType: t3.small
+    minSize: 2
+    maxSize: 4
+    desiredCapacity: 2
+    volumeSize: 20
+    privateNetworking: true
+    iam:
+      withAddonPolicies:
+        autoScaler: true
+        albIngress: true

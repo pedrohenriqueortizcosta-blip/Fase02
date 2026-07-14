@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flag-service-config
+  namespace: flag-service
+data:
+  AUTH_SERVICE_URL: "http://auth-service.auth-service.svc.cluster.local:8001"
